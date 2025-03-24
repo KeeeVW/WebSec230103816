@@ -50,6 +50,58 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Web\ProductsController; // Import only once
 
 // Define the route
-Route::get('/products', [ProductsController::class, 'list'])->name('products.list');
+use App\Http\Controllers\Web\ProductController;
+use App\Http\Controllers\Web\PurchaseController;
+use App\Http\Controllers\Web\UserController;
 
-Route::get('/products', [ProductsController::class, 'list'])->name('products.list');
+// Middleware to ensure authentication
+Route::middleware(['auth'])->group(function () {
+    // Customers
+    Route::get('/profile', [UserController::class, 'profile'])->name('profile');
+    Route::get('/purchases', [PurchaseController::class, 'index'])->name('purchases.index');
+    Route::post('/purchase/{product}', [PurchaseController::class, 'store'])->name('purchases.store');
+
+    // Employees
+    Route::middleware(['role:employee'])->group(function () {
+        Route::resource('products', ProductController::class);
+        Route::get('/customers', [UserController::class, 'customers'])->name('customers.index');
+        Route::post('/add-credit/{user}', [UserController::class, 'addCredit'])->name('users.addCredit');
+    });
+});
+
+
+
+
+use App\Http\Controllers\Controller;
+use App\Models\Purchase;
+use App\Models\Product;
+use Illuminate\Http\Request;
+
+class PurchaseControler extends Controller {
+    public function index() {
+        return view('purchases.index', ['purchases' => auth()->user()->purchases]);
+    }
+
+    public function store(Request $request, Product $product) {
+        $user = auth()->user();
+
+        if ($user->credit < $product->price) return back()->with('error', 'Insufficient credit');
+        if ($product->stock < 1) return back()->with('error', 'Out of stock');
+
+        $product->decrement('stock');
+        $user->update(['credit' => $user->credit - $product->price]);
+        Purchase::create(['user_id' => $user->id, 'product_id' => $product->id, 'quantity' => 1, 'total_price' => $product->price]);
+
+        return back()->with('success', 'Purchase successful!');
+    }
+}
+use Illuminate\Support\Facades\Auth;
+
+Auth::routes(); // This will register login, register, logout routes
+Route::get('/login', function () {
+   return view('auth.login');
+})->name('login');
+
+Auth::routes();
+
+Route::get('/home', [App\Http\Controllers\HomeController::class, 'index'])->name('home');
